@@ -18,15 +18,11 @@ This project presents a modular Windows desktop application designed to act as a
 
 * **Core Functionality Modules:**
 
-  * **Operating System Automation:** Manages files and folders (`pathlib`, `shutil`) and controls mouse and keyboard (`pyautogui`).
-
-  * **Google Calendar Integration:** Manages events and appointments (`google-api-python-client`, `google-auth`, `google-auth-httplib2`, `google-auth-oauthlib`, `pytz`, `dateutil`).
+  * **Operating System Automation:** Manages files and folders, opens applications and controls mouse and keyboard.
 
   * **Gmail Integration:** Read, send, and manage emails via Gmail API.
   
-  * **Schedule and Task Management:** Integrates with Google Calendar or other calendar APIs
-
-  * **Weather (OpenWeatherMap):** Current conditions, 5-day/3-hour forecast, and air pollution (AQI).
+  * **Schedule and Task Management:** Integrates with Google Calendar API
 
 ## Setup and Installation
 
@@ -54,7 +50,7 @@ Before running the application, you need to configure API keys for the LLM and o
 
     * For Google Gemini API, replace `"YOUR_GEMINI_API_KEY"` with your actual API key.
 
-    * If using other LLM providers (e.g., Awan, Novita), ensure `[PROVIDER]_API_KEY` is set correctly and update their respective API keys.
+    * If using other LLM providers (e.g., Awan, Novita), ensure `YOUR_[PROVIDER]_API_KEY` is set correctly and update their respective API keys.
 
 ## Google Calendar Integration and Gmail Setup
 
