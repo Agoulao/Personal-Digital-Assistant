@@ -6,6 +6,7 @@ import pyautogui
 from pathlib import Path
 from shutil import copy2
 import shutil 
+import webbrowser
 from modules.base_func import BaseAutomationModule # Ensure this is imported
 
 # Decorator for safe execution and uniform error handling
@@ -119,6 +120,11 @@ class SystemAutomation(BaseAutomationModule):
                 "description": "Presses a specific keyboard key (e.g., 'enter', 'esc', 'alt').",
                 "example_json": '{"action":"press_key","key":"enter"}'
             },
+            "open_webpage": {
+                "method_name": "open_webpage",
+                "description": "Opens a web page in the default browser.",
+                "example_json": '{"action":"open_webpage","url":"https://www.google.com"}'
+            }
         }
 
     # --- File Management ---
@@ -278,4 +284,12 @@ class SystemAutomation(BaseAutomationModule):
     def press_key(self, key: str) -> str:
         pyautogui.press(key)
         return f"Key pressed: {key}"
+    
+    @safe_action
+    def open_webpage(self, url: str) -> str:
+        try:
+            webbrowser.open(url)
+            return f"Opened web page: {url} in the default browser."
+        except Exception as e:
+            return f"[FAIL] Could not open web page '{url}'. Error: {e}"    
 

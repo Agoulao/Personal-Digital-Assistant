@@ -147,8 +147,68 @@ class GoogleCalendarAutomation(BaseAutomationModule):
                 "description": "Deletes a calendar event by its summary and optional time period. The summary should be an exact or very close match to an existing event. Time period must be in ISO 8601 format (YYYY-MM-DD or INSEE-MM-DD/YYYY-MM-DD).",
                 "example_json": '{"action":"delete_event","summary":"Team Sync","time_period":"2025-07-01"}'
             },
+            "delete_events_range": {
+                "method_name": "delete_calendar_events_in_range",
+                "description": ("Bulk delete events within a time range (YYYY-MM-DD[/YYYY-MM-DD]) with an optional summary filter. If summary is provided, only events whose title contains that text (case-insensitive) are removed."),
+                "example_json": '{"action":"delete_events_range","time_period":"2025-10-16/2025-10-23","summary":"meeting"}'
+            },
             # Add more calendar actions as needed
         }
+
+
+    # Adiciona isto algures na classe GoogleCalendarAutomation (por ex. antes de list_calendar_events)
+    def _compute_time_window(self, time_period: str | None):
+        """
+        Converte um descritor de período numa janela [timeMin, timeMax] em ISO UTC.
+        - None  => semana corrente (2ª 00:00 -> domingo 23:59:59, hora local)
+        - 'YYYY-MM-DD' => esse dia
+        - 'YYYY-MM-DDTHH:MM:SS' => janela de 1 minuto a partir desse instante
+        - 'YYYY-MM-DD/YYYY-MM-DD' ou com datetimes => intervalo [start, end]
+        """
+        if time_period is None:
+            # Semana corrente (segunda a domingo) em hora local
+            now_local = datetime.datetime.now(self.local_tz)
+            monday_local = (now_local - datetime.timedelta(days=(now_local.weekday()))).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            sunday_local = monday_local + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
+            time_min = monday_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            time_max = sunday_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            return time_min, time_max, "this_week"
+
+        if '/' in time_period:
+            start_str, end_str = time_period.split('/')
+            # tenta datetime completo, senão assume data
+            try:
+                start_dt_local = self.local_tz.localize(datetime.datetime.fromisoformat(start_str.replace('Z', '')))
+            except ValueError:
+                start_dt_local = self.local_tz.localize(datetime.datetime.strptime(start_str, '%Y-%m-%d')).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+            try:
+                end_dt_local = self.local_tz.localize(datetime.datetime.fromisoformat(end_str.replace('Z', '')))
+            except ValueError:
+                end_dt_local = self.local_tz.localize(datetime.datetime.strptime(end_str, '%Y-%m-%d')).replace(
+                    hour=23, minute=59, second=59, microsecond=999999
+                )
+            return (
+                start_dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z'),
+                end_dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z'),
+                time_period
+            )
+
+        # data única ou datetime único
+        if 'T' in time_period:
+            dt_local = self.local_tz.localize(datetime.datetime.fromisoformat(time_period.replace('Z', '')))
+            time_min = dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            time_max = (dt_local + datetime.timedelta(minutes=1)).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            return time_min, time_max, time_period
+        else:
+            date_local = self.local_tz.localize(datetime.datetime.strptime(time_period, '%Y-%m-%d'))
+            time_min = date_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            time_max = (date_local + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            return time_min, time_max, time_period
+
 
     @safe_action
     def list_calendar_events(self, time_period: str = "today") -> str:
@@ -158,44 +218,12 @@ class GoogleCalendarAutomation(BaseAutomationModule):
         """
         if not self.is_authenticated:
             return "Google Calendar API not authenticated."
-
-        time_min_iso = None
-        time_max_iso = None
-
+        
         try:
-            if '/' in time_period: # Handle date range (e.g., "2025-01-01/2025-12-31")
-                start_date_str, end_date_str = time_period.split('/')
-                
-                # Parse start date/time as local, then convert to UTC for query
-                try: # Try parsing as full datetime first
-                    start_dt_local = self.local_tz.localize(datetime.datetime.fromisoformat(start_date_str))
-                except ValueError: # If only date is provided
-                    start_dt_local = self.local_tz.localize(datetime.datetime.strptime(start_date_str, '%Y-%m-%d')).replace(hour=0, minute=0, second=0, microsecond=0)
-                time_min_iso = start_dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                
-                # Parse end date/time as local, then convert to UTC for query
-                try: # Try parsing as full datetime first
-                    end_dt_local = self.local_tz.localize(datetime.datetime.fromisoformat(end_date_str))
-                except ValueError: # If only date is provided, set to end of day
-                    end_dt_local = self.local_tz.localize(datetime.datetime.strptime(end_date_str, '%Y-%m-%d')).replace(hour=23, minute=59, second=59, microsecond=999999)
-                time_max_iso = end_dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-
-            else: # Single date or datetime (e.g., "2025-07-10" or "2025-07-10T15:30:00")
-                # Check if the time_period string contains a time component ('T')
-                if 'T' in time_period:
-                    # Specific datetime: parse as local, convert to UTC, set 1-minute window
-                    dt_obj_local = self.local_tz.localize(datetime.datetime.fromisoformat(time_period.replace('Z', ''))) # Ensure 'Z' is removed if LLM adds it
-                    time_min_iso = dt_obj_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                    time_max_iso = (dt_obj_local + datetime.timedelta(minutes=1)).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                else:
-                    # Date-only: parse as local date, set timeMin to start of day, timeMax to start of next day
-                    date_obj_local = self.local_tz.localize(datetime.datetime.strptime(time_period, '%Y-%m-%d'))
-                    time_min_iso = date_obj_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                    next_day_local = date_obj_local + datetime.timedelta(days=1)
-                    time_max_iso = next_day_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-
+            time_min_iso, time_max_iso, period_label = self._compute_time_window(time_period)
         except Exception as e:
             raise ValueError(f"Invalid ISO 8601 date/time format for time_period: '{time_period}'. Error: {e}")
+
 
         print(f"DEBUG: Calling Google Calendar API to list events (timeMin={time_min_iso}, timeMax={time_max_iso})...")
         api_call_start_time = time.time()
@@ -219,30 +247,51 @@ class GoogleCalendarAutomation(BaseAutomationModule):
             start = event['start'].get('dateTime', event['start'].get('date'))
             end = event['end'].get('dateTime', event['end'].get('date'))
             summary = event.get('summary', 'No Title')
+            location = event.get('location')
             
-            # For display, convert UTC times from Google back to local timezone for readability
             try:
                 if 'dateTime' in event['start']:
+                    # Specific time event (can cross days)
                     start_dt_utc = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
                     start_dt_local = start_dt_utc.astimezone(self.local_tz)
-                    start_display = start_dt_local.strftime('%Y-%m-%d %H:%M')
-                else: # All-day event (date string)
-                    start_display = start 
-                
-                if 'dateTime' in event['end']:
+                    
                     end_dt_utc = datetime.datetime.fromisoformat(end.replace('Z', '+00:00'))
                     end_dt_local = end_dt_utc.astimezone(self.local_tz)
-                    end_display = end_dt_local.strftime('%Y-%m-%d %H:%M')
-                else: # All-day event (date string)
-                    end_date_obj = datetime.datetime.fromisoformat(end).date()
-                    end_display = (end_date_obj - datetime.timedelta(days=1)).isoformat()
-
+                    
+                    if start_dt_local.date() == end_dt_local.date():
+                        # SAME DAY EVENT: YYYY-MM-DD (Day), HH:MM–HH:MM
+                        date_display = start_dt_local.strftime('%Y-%m-%d (%a)')
+                        time_display = f"{start_dt_local.strftime('%H:%M')}–{end_dt_local.strftime('%H:%M')}"
+                        time_range_display = f"{date_display}, {time_display}"
+                    else:
+                        # MULTI-DAY EVENT: Start: YYYY-MM-DD (Day), HH:MM | End: YYYY-MM-DD (Day), HH:MM
+                        start_str = start_dt_local.strftime('Start: %Y-%m-%d (%a), %H:%M')
+                        end_str = end_dt_local.strftime('End: %Y-%m-%d (%a), %H:%M')
+                        time_range_display = f"{start_str} | {end_str}"
+                    
+                else: 
+                    # All-day event (date string)
+                    start_date_obj = datetime.datetime.fromisoformat(start).date()
+                    end_date_obj = datetime.datetime.fromisoformat(end).date() - datetime.timedelta(days=1)
+                    
+                    if start_date_obj == end_date_obj:
+                         # Single-day all-day event: YYYY-MM-DD (Day)
+                         time_range_display = f"ALL-DAY: {start_date_obj.strftime('%Y-%m-%d (%a)')}"
+                    else:
+                        # Multi-day all-day event: ALL-DAY: YYYY-MM-DD to YYYY-MM-DD
+                        time_range_display = f"ALL-DAY: {start_date_obj.isoformat()} to {end_date_obj.isoformat()}"
+                    
             except Exception as e:
-                start_display = start
-                end_display = end
+                time_range_display = f"Error formatting time: {e}"
                 logging.warning(f"Failed to format event time for display: {e}. Raw: {start} to {end}")
+                
+            # Combine
+            details = [time_range_display]
+            if location:
+                details.append(f"Location: {location}")
 
-            output += f"- {summary} ({start_display} to {end_display})\n"
+            output += f"- {summary} — {' | '.join(details)}\n"
+        # -----------------------------------
         return output
 
     @safe_action
@@ -291,6 +340,10 @@ class GoogleCalendarAutomation(BaseAutomationModule):
                     end_dt_local = start_dt_local + datetime.timedelta(hours=1)
                     event['end'] = {'dateTime': end_dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')}
                     event['end']['timeZone'] = 'UTC'
+                    
+                start_display = start_dt_local.strftime('%Y-%m-%d (%a), %H:%M')
+                end_display = end_dt_local.strftime('%H:%M') # Only time for end is usually sufficient
+                    
             except ValueError as e:
                 raise ValueError(f"Invalid start_time format for specific time event: {start_time}. Error: {e}")
 
@@ -299,7 +352,21 @@ class GoogleCalendarAutomation(BaseAutomationModule):
         event = self.service.events().insert(calendarId='primary', body=event).execute()
         api_call_end_time = time.time()
         print(f"DEBUG: Google Calendar API create event call took {api_call_end_time - api_call_start_time:.2f} seconds.")
-        return f"Event '{event.get('summary')}' created successfully. Link: {event.get('htmlLink')}"
+        if is_all_day_start:
+             if start_display == end_display:
+                 time_range_str = f"All-day on {start_display}"
+             else:
+                 time_range_str = f"All-day from {start_display} to {end_display}"
+        else:
+             time_range_str = f"{start_display}-{end_display}"
+
+
+        details = [time_range_str]
+        if description:
+            # Truncate description for a concise display
+            details.append(f"Description: {description[:50]}..." if len(description) > 50 else f"Description: {description}")
+
+        return f"Event '{event.get('summary')}' created successfully. Details:\n- {' | '.join(details)}"
 
     @safe_action
     def delete_calendar_event(self, summary: str, time_period: str = None) -> str:
@@ -317,22 +384,13 @@ class GoogleCalendarAutomation(BaseAutomationModule):
 
         if time_period:
             try:
-                if '/' in time_period: # Handle date range
-                    start_date_str, end_date_str = time_period.split('/')
-                    start_dt_local = self.local_tz.localize(datetime.datetime.strptime(start_date_str, '%Y-%m-%d'))
-                    end_dt_local = self.local_tz.localize(datetime.datetime.strptime(end_date_str, '%Y-%m-%d')).replace(hour=23, minute=59, second=59, microsecond=999999)
-                    time_min_iso = start_dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                    time_max_iso = end_dt_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                else: # Single date
-                    date_obj_local = self.local_tz.localize(datetime.datetime.strptime(time_period, '%Y-%m-%d'))
-                    time_min_iso = date_obj_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-                    time_max_iso = (date_obj_local + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z') # End of day for single date
+                time_min_iso, time_max_iso, _ = self._compute_time_window(time_period)
             except Exception as e:
-                raise ValueError(f"Invalid ISO 8601 date format for time_period: '{time_period}'. Error: {e}")
-        else: # If no time_period is provided, search for events from now onwards (local now converted to UTC)
+                raise ValueError(f"Invalid time_period: '{time_period}'. Error: {e}")
+        else:
             now_local = datetime.datetime.now(self.local_tz)
             time_min_iso = now_local.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-            # No time_max_iso means search indefinitely into the future
+            time_max_iso = None  # futuro aberto
 
         print(f"DEBUG: Calling Google Calendar API to list events for deletion search (timeMin={time_min_iso}, timeMax={time_max_iso})...")
         api_call_start_time = time.time()
@@ -364,10 +422,132 @@ class GoogleCalendarAutomation(BaseAutomationModule):
         event_to_delete = matching_events[0]
         event_id = event_to_delete['id']
         event_summary = event_to_delete['summary']
+        
+        try:
+            start = event_to_delete['start'].get('dateTime', event_to_delete['start'].get('date'))
+            end = event_to_delete['end'].get('dateTime', event_to_delete['end'].get('date'))
+            
+            if 'dateTime' in event_to_delete['start']:
+                # Specific time event
+                start_dt_utc = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
+                start_dt_local = start_dt_utc.astimezone(self.local_tz)
+                end_dt_utc = datetime.datetime.fromisoformat(end.replace('Z', '+00:00'))
+                end_dt_local = end_dt_utc.astimezone(self.local_tz)
+                
+                # Check for cross-day event
+                if start_dt_local.date() == end_dt_local.date():
+                    date_display = start_dt_local.strftime('%Y-%m-%d (%a)')
+                    time_display = f"{start_dt_local.strftime('%H:%M')}–{end_dt_local.strftime('%H:%M')}"
+                    time_range_display = f"{date_display}, {time_display}"
+                else:
+                    start_str = start_dt_local.strftime('%Y-%m-%d (%a), %H:%M')
+                    end_str = end_dt_local.strftime('%Y-%m-%d (%a), %H:%M')
+                    time_range_display = f"{start_str} to {end_str}"
+            else:
+                # All-day event
+                start_date_obj = datetime.datetime.fromisoformat(start).date()
+                end_date_obj = datetime.datetime.fromisoformat(end).date() - datetime.timedelta(days=1)
+                
+                if start_date_obj == end_date_obj:
+                     time_range_display = f"All-day {start_date_obj.strftime('%Y-%m-%d (%a)')}"
+                else:
+                    time_range_display = f"All-day from {start_date_obj.isoformat()} to {end_date_obj.isoformat()}"
+        
+        except Exception as e:
+            time_range_display = f"Time parsing error: {e}"
+        
+        # Details now only contains the time range
+        details = [time_range_display]
 
         print(f"DEBUG: Calling Google Calendar API to delete event (ID={event_id}, Summary='{event_summary}')...")
         api_call_start_time = time.time()
         self.service.events().delete(calendarId='primary', eventId=event_id).execute()
         api_call_end_time = time.time()
         print(f"DEBUG: Google Calendar API delete event call took {api_call_end_time - api_call_start_time:.2f} seconds.")
-        return f"Event '{event_summary}' deleted successfully."
+        output = f"Deleted 1 event matching '{summary}' in {time_period if time_period else 'any upcoming time'}:\n"
+        output += f"- {event_summary} — {' | '.join(details)}"
+        return output
+
+
+    @safe_action
+    def delete_calendar_events_in_range(self, time_period: str, summary: str = None) -> str:
+        """
+        Bulk delete of events inside a time range.
+        - time_period: 'YYYY-MM-DD/YYYY-MM-DD' (ou com datetimes)
+        - summary (opcional): substring case-insensitive a procurar no título
+        """
+        if not self.is_authenticated:
+            return "Google Calendar API not authenticated."
+
+        if not time_period or '/' not in time_period:
+            raise ValueError("time_period must be a date or datetime range: 'YYYY-MM-DD/YYYY-MM-DD'.")
+
+        try:
+            time_min_iso, time_max_iso, _ = self._compute_time_window(time_period)
+        except Exception as e:
+            raise ValueError(f"Invalid time_period: '{time_period}'. Error: {e}")
+
+        print(f"DEBUG: Listing events for bulk delete (timeMin={time_min_iso}, timeMax={time_max_iso})...")
+        events_result = self.service.events().list(
+            calendarId='primary',
+            timeMin=time_min_iso,
+            timeMax=time_max_iso,
+            singleEvents=True,
+            orderBy='startTime',
+            q=summary if summary else None
+        ).execute()
+
+        items = events_result.get('items', [])
+        if summary:
+            items = [ev for ev in items if summary.lower() in ev.get('summary', '').lower()]
+
+        if not items:
+            return f"No events found to delete for period '{time_period}'" + (f" matching '{summary}'." if summary else ".")
+
+        deleted_details = []
+        deleted = 0
+        for ev in items:
+            try:
+                # --- PREPARE DISPLAY BEFORE DELETION (Location REMOVED) ---
+                start = ev['start'].get('dateTime', ev['start'].get('date'))
+                end = ev['end'].get('dateTime', ev['end'].get('date'))
+                event_summary = ev.get('summary', 'No Title')
+                
+                if 'dateTime' in ev['start']:
+                    start_dt_utc = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
+                    start_dt_local = start_dt_utc.astimezone(self.local_tz)
+                    end_dt_utc = datetime.datetime.fromisoformat(end.replace('Z', '+00:00'))
+                    end_dt_local = end_dt_utc.astimezone(self.local_tz)
+                    
+                    # Check for cross-day event
+                    if start_dt_local.date() == end_dt_local.date():
+                        date_display = start_dt_local.strftime('%Y-%m-%d (%a)')
+                        time_display = f"{start_dt_local.strftime('%H:%M')}–{end_dt_local.strftime('%H:%M')}"
+                        time_range_display = f"{date_display}, {time_display}"
+                    else:
+                        start_str = start_dt_local.strftime('%Y-%m-%d (%a), %H:%M')
+                        end_str = end_dt_local.strftime('%Y-%m-%d (%a), %H:%M')
+                        time_range_display = f"{start_str} to {end_str}"
+                else:
+                    # All-day event
+                    start_date_obj = datetime.datetime.fromisoformat(start).date()
+                    end_date_obj = datetime.datetime.fromisoformat(end).date() - datetime.timedelta(days=1)
+                    
+                    if start_date_obj == end_date_obj:
+                         time_range_display = f"All-day {start_date_obj.strftime('%Y-%m-%d (%a)')}"
+                    else:
+                        time_range_display = f"All-day from {start_date_obj.isoformat()} to {end_date_obj.isoformat()}"
+                
+                details = [time_range_display] # Only contains the time range
+                # ---------------------------------------
+
+                self.service.events().delete(calendarId='primary', eventId=ev['id']).execute()
+                deleted_details.append(f"- {event_summary} — {''.join(details)}")
+                deleted += 1
+            except Exception as e:
+                logging.error(f"Failed to delete event '{ev.get('summary','')}' ({ev.get('id')}): {e}")
+
+        filter_str = f" matching '{summary}'" if summary else ""
+        output = f"Deleted {deleted} event(s) for period {time_period}{filter_str}:\n"
+        output += '\n'.join(deleted_details)
+        return output
