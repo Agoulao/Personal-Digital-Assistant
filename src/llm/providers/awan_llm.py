@@ -3,6 +3,7 @@ import requests
 import re
 from llm.llm_client import LLMClient, SYSTEM_CHAT, BASE_SYSTEM_PARSER
 from config import Config 
+from typing import List, Dict, Optional
 
 class AwanLLMClient(LLMClient):
     """LLMClient implementation for Awan LLM API."""
@@ -21,7 +22,7 @@ class AwanLLMClient(LLMClient):
             "repetition_penalty": 1.1 
         }
 
-    def parse_intents(self, user_input: str, available_actions_prompt: str = "") -> list[dict]:
+    def parse_intents(self, user_input: str, available_actions_prompt: str = "", history: Optional[list[dict]] = None) -> list[dict]:
         
         # Build the full system parser prompt dynamically, including base rules,
         # available actions
@@ -30,6 +31,24 @@ class AwanLLMClient(LLMClient):
         if available_actions_prompt:
             # The available_actions_prompt already contains its own headers (e.g., "--- Currently Available Automation Actions ---")
             full_system_parser_prompt += available_actions_prompt
+            
+        # Construct messages including history for context
+        messages: List[Dict[str, str]] = [{"role": "system", "content": full_system_parser_prompt}]
+        
+        if history:
+            # Append previous conversation turns
+            for turn in history:
+                content_part = turn["content"]
+                if isinstance(content_part, str):
+                    messages.append({"role": turn["role"], "content": content_part})
+                elif isinstance(content_part, list): # If content is already a list of parts
+                    # Awan API expects 'content' to be a string, so flatten parts if necessary
+                    messages.append({"role": turn["role"], "content": " ".join(str(p) for p in content_part)})
+                else:
+                    messages.append({"role": turn["role"], "content": str(content_part)}) # Fallback for other types
+
+        # Add the current user prompt
+        messages.append({"role": "user", "content": user_input})    
 
         payload = {
             **self.base_params,

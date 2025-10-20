@@ -3,6 +3,7 @@ import requests
 import re
 from llm.llm_client import LLMClient, BASE_SYSTEM_PARSER, SYSTEM_CHAT
 from config import Config
+from typing import List, Dict, Optional
 
 class NovitaLLMClient(LLMClient):
     """LLMClient implementation for Hugging Face Inference API via Novita AI using direct requests."""
@@ -36,16 +37,22 @@ class NovitaLLMClient(LLMClient):
         
         return payload
 
-    def parse_intents(self, user_input: str, available_actions_prompt: str = "") -> list[dict]:
+    def parse_intents(self, user_input: str, available_actions_prompt: str = "", history: Optional[list[dict]] = None) -> list[dict]:
         
         full_system_parser_prompt = BASE_SYSTEM_PARSER 
         if available_actions_prompt:
             full_system_parser_prompt += available_actions_prompt
 
-        messages = [
-            {"role": "system", "content": full_system_parser_prompt},
-            {"role": "user", "content": user_input}
-        ]
+        # Construct messages including history for context
+        messages = [{"role": "system", "content": full_system_parser_prompt}]
+        
+        if history:
+            # Append previous conversation turns
+            for turn in history:
+                # Assuming history content is a string here
+                messages.append({"role": turn["role"], "content": turn["content"]})
+        
+        messages.append({"role": "user", "content": user_input})
 
         payload = self._prepare_payload(messages, is_intent_parsing=True)
         

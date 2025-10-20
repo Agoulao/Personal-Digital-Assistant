@@ -47,18 +47,13 @@ class SystemAutomation(BaseAutomationModule):
             },
             "create_file": {
                 "method_name": "create_file",
-                "description": "Creates a new empty file at the specified path.",
-                "example_json": '{"action":"create_file","filename":"DIRECTORY/FILENAME"}'
+                "description": "Creates a new file at the specified path. Optionally, include content to write immediately.",
+                "example_json": '{"action":"create_file","filename":"DIRECTORY/FILENAME","content":"Optional text"}'
             },
-            "write_file": {
+            "write_file": { 
                 "method_name": "write_file",
-                "description": "Writes content to a file, creating it if it doesn't exist. This action overwrites existing content.",
-                "example_json": '{"action":"write_file","filename":"myfile.txt","content":"Hello World"}'
-            },
-            "append_file": { 
-                "method_name": "append_file",
-                "description": "Appends content to an existing file. If the file does not exist, it will be created.",
-                "example_json": '{"action":"append_file","filename":"mylog.txt","content":"New log entry."}'
+                "description": "Writes content to an existing file.",
+                "example_json": '{"action":"write_file","filename":"mylog.txt","content":"New log entry."}'
             },
             "read_file": {
                 "method_name": "read_file",
@@ -130,32 +125,42 @@ class SystemAutomation(BaseAutomationModule):
     # --- File Management ---
     @safe_action
     def create_folder(self, folder: str) -> str:
-        if Path(folder).exists():
-            return f"Folder already exists: {folder}"
-        Path(folder).mkdir(parents=True, exist_ok=True)
-        return f"Folder created: {folder}"
+        folder_path = Path(folder)
+        absolute_path = folder_path.absolute()
+        if folder_path.exists():
+            return f"Folder already exists and was not created: '{absolute_path}'"
+        
+        folder_path.mkdir(parents=True, exist_ok=True)
+        return f"Folder successfully created at: '{absolute_path}'"
 
     @safe_action
-    def create_file(self, filename: str) -> str:
-        if Path(filename).exists():
-            return f"File already exists: {filename}"
-        Path(filename).parent.mkdir(parents=True, exist_ok=True)
-        Path(filename).write_text('')
-        return f"File created: {filename}"
+    def create_file(self, filename: str, content: str = None) -> str:
+        """Create a new file, optionally writing initial content."""
+        file_path = Path(filename)
+        absolute_path = file_path.absolute()
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            if content:
+                f.write(content)
+
+        if content:
+            return f"File created at: '{absolute_path}'\nInitial content written:\n---\n{content}\n---"
+        
+        return f"Empty file created at: '{absolute_path}'"
 
     @safe_action
     def write_file(self, filename: str, content: str) -> str:
-        Path(filename).parent.mkdir(parents=True, exist_ok=True)
-        with open(filename, "w", encoding="utf-8") as f:  # "w" mode overwrites
-            f.write(content or "")
-        return f"Content written to {filename}:\n{content}"
-
-    @safe_action
-    def append_file(self, filename: str, content: str) -> str: 
-        Path(filename).parent.mkdir(parents=True, exist_ok=True)
-        with open(filename, "a", encoding="utf-8") as f: 
-            f.write(content or "")
-        return f"Content appended to {filename}:\n{content}"
+        """Write text to an existing file."""
+        file_path = Path(filename)
+        absolute_path = file_path.absolute()
+        if not file_path.exists():
+            return f"[FAIL] File not found. Could not write content to '{filename}'."
+        
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write(content)
+            
+        return f"Successfully wrote content to '{absolute_path}'.\nContent written:\n---\n{content}\n---"
 
     @safe_action
     def read_file(self, filename: str) -> str:
@@ -163,53 +168,65 @@ class SystemAutomation(BaseAutomationModule):
         Reads and returns the text content of a specified file.
         """
         filepath = Path(filename)
+        absolute_path = filepath.absolute()
         if not filepath.exists():
-            return f"[FAIL] File '{filename}' does not exist."
+            return f"[FAIL] File not found. Could not read content from '{filename}'."
         if not filepath.is_file():
-            return f"[FAIL] Path '{filename}' is not a file. Please specify a file to read its contents."
+            return f"[FAIL] Path is not a file. Please specify a file to read its contents at: '{absolute_path}'"
         
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
-            return f"Content of '{filename}':\n---\n{content}\n---"
+            return f"Reading content from '{absolute_path}':\n---\n{content}\n---"
         except Exception as e:
             return f"[FAIL] Error reading file '{filename}': {e}"
 
     @safe_action
     def delete_file(self, filename: str) -> str:
-        Path(filename).unlink()
-        return f"File deleted: {filename}"
+        file_path = Path(filename)
+        absolute_path = file_path.absolute()
+        file_path.unlink()
+        return f"File successfully deleted: '{absolute_path}'"
     
     @safe_action
     def delete_folder(self, folder: str) -> str:
+        folder_path = Path(folder)
+        absolute_path = folder_path.absolute()
         try:
             shutil.rmtree(folder)
-            return f"Folder deleted: {folder}"
+            return f"Folder and all its contents successfully deleted: '{absolute_path}'"
         except Exception as e:
             return f"[FAIL] Error deleting folder '{folder}': {e}"
 
     @safe_action
     def list_directory(self, directory: str) -> str:
+        dir_path = Path(directory)
+        absolute_path = dir_path.absolute()
         # Check if the path exists and is a directory
-        if not Path(directory).exists():
-            return f"Error: Directory '{directory}' does not exist."
-        if not Path(directory).is_dir():
-            return f"Error: Path '{directory}' is not a directory. Please specify a folder to list its contents."
+        if not dir_path.exists():
+            return f"[FAIL] Directory not found. Could not list contents of: '{absolute_path}'"
+        if not dir_path.is_dir():
+            return f"[FAIL] Path is not a directory. Please specify a folder to list contents of: '{absolute_path}'"
 
         files = os.listdir(directory)
-        return "\n".join(files) if files else "<empty>"
+        files_list = "\n".join(files) if files else "<empty>"
+        return f"Contents of '{absolute_path}':\n{files_list}"
 
     # --- File Operations: rename, copy, move ---
     @safe_action
     def rename_file(self, src: str, dest: str) -> str:
-        Path(src).rename(dest)
-        return f"File renamed: {src} -> {dest}"
+        src_path = Path(src)
+        dest_path = Path(dest)
+        src_path.rename(dest)
+        return f"File successfully renamed/moved.\nFrom: '{src_path.absolute()}'\nTo: '{dest_path.absolute()}'"
 
     @safe_action
     def copy_file(self, src: str, dest: str) -> str:
-        Path(dest).parent.mkdir(parents=True, exist_ok=True)
+        src_path = Path(src)
+        dest_path = Path(dest)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
         copy2(src, dest)
-        return f"File copied: {src} -> {dest}"
+        return f"File successfully copied.\nSource: '{src_path.absolute()}'\nDestination: '{dest_path.absolute()}'"
 
     @safe_action
     def move_file(self, src: str, dest: str) -> str:
@@ -219,7 +236,7 @@ class SystemAutomation(BaseAutomationModule):
 
         # Explicitly check for the source path
         if not src_path.exists():
-            return f"Error: Source file '{src}' not found."
+            return f"[FAIL] Error: Source file '{src}' not found."
         
         # Create the destination directory if it does not exist
         if not dest_path.parent.exists():
@@ -235,7 +252,7 @@ class SystemAutomation(BaseAutomationModule):
         try:
             # Use shutil.move, which is more robust and can overwrite files
             shutil.move(str(src_path), str(final_dest))
-            return f"File moved: {src} -> {final_dest}"
+            return f"File successfully moved.\nFrom: '{src_path.absolute()}'\nTo: '{Path(final_dest).absolute()}'"
         except shutil.Error as e:
             return f"[FAIL] Failed to move file due to a shutil error: {e}"
         except Exception as e:

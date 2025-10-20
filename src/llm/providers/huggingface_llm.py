@@ -34,7 +34,8 @@ class HuggingFaceLLMClient(LLMClient):
     def parse_intents(
         self,
         user_input: str,
-        available_actions_prompt: str = ""
+        available_actions_prompt: str = "",
+        history: Optional[List[Dict]] = None
     ) -> List[Dict]:
         """
         Ask the model to return ONLY a JSON array of intents.
@@ -44,6 +45,20 @@ class HuggingFaceLLMClient(LLMClient):
         system_instruction = BASE_SYSTEM_PARSER
         if available_actions_prompt:
             system_instruction += available_actions_prompt
+            
+        # Construct messages including history for context
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system_instruction}]
+
+        if history:
+            # Append previous conversation turns
+            for turn in history:
+                role = turn.get("role", "user")
+                content = turn.get("content", "")
+                if content:
+                    messages.append({"role": role, "content": content})  
+                    
+        # Current user message
+        messages.append({"role": "user", "content": user_input})              
 
         try:
             completion = self.client.chat.completions.create(

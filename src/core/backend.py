@@ -131,7 +131,8 @@ class Backend:
             # parse_intents does NOT receive full conversation history for efficiency
             intents = parse_intents(
                 user_text, 
-                available_actions_prompt=self.all_supported_actions_list_for_llm + current_context_for_llm # Add current context here
+                available_actions_prompt=self.all_supported_actions_list_for_llm + current_context_for_llm, # Add current context here
+                history=self.conversation_history # Pass the entire history
             )
         except Exception as e:
             print(f"Error parsing intents: {e}")

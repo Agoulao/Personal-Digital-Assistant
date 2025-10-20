@@ -27,7 +27,7 @@ class Config:
     )
 
     # LLM settings
-    LLM_PROVIDER     = "gemini"       # or "gemini", "novita", "awan".
+    LLM_PROVIDER     = "gemini"       # or "gemini", "novita", "huggingface", "awan".
     # Awan LLM settings
     AWAN_API_URL     = "https://api.awanllm.com/v1/chat/completions"
     AWAN_API_KEY     = "YOUR_AWAN_API_KEY" # IMPORTANT: Replace with your actual Awan API key

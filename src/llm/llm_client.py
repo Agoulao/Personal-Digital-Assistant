@@ -1,5 +1,7 @@
 import json
 from abc import ABC, abstractmethod
+
+from requests_cache import Optional
 from config import Config
 import re
 
@@ -45,7 +47,7 @@ of action objects.
   - You MUST map the user's input to the *exact* parameter names specified in the examples for each action.
 
 **Ambiguity** If the user's request is purely conversational, emit:
-  `[{"action":"none"}]`    
+  `[{"action":"none"}]`      
 
 ---
 Your response MUST be a valid JSON array. Do NOT include any other text, explanations, or markdown outside the JSON array.
@@ -55,6 +57,10 @@ Return an array of intent objects, e.g.:
 If no action is detected, return:
 [{"action":"none"}]
 NEVER return "tool_code", code fences, '---', or Python code.
+
+Note: If a user asks to schedule an event without a clear day, such as 'next week' or 'next month', ask to specify the exact date."
+Note: If a user asks to write something to a file, don't write it literally as said, for example, if they say "write the current date to a file", you must resolve "current date" to the actual date value, instead of writing the phrase "current date".
+Note: If a user asks to create a directory on the desktop or anywhere else and you don't know the exact path, you must ask the user for the full path instead of assuming a default path.
 """
 
 #   - When an example uses a placeholder (e.g., "DIRECTORY", "FILENAME"), you must replace that placeholder with the actual value provided by the user in their instruction.
@@ -64,7 +70,7 @@ class LLMClient(ABC):
     """Abstract interface for chat + intent parsing."""
 
     @abstractmethod
-    def parse_intents(self, user_input: str, available_actions_prompt: str = "") -> list[dict]:
+    def parse_intents(self, user_input: str, available_actions_prompt: str = "", history: Optional[list[dict]] = None) -> list[dict]:
         """
         Return a list of intent dicts given the user input.
         """
@@ -210,9 +216,9 @@ def get_llm_client() -> LLMClient:
 _client = get_llm_client()
 
 # parse_intents and generate_response pass through the client method
-def parse_intents(user_input: str, available_actions_prompt: str = "") -> list[dict]:
+def parse_intents(user_input: str, available_actions_prompt: str = "", history: Optional[list[dict]] = None) -> list[dict]:
     # Pass all relevant context to the client's method
-    return _client.parse_intents(user_input, available_actions_prompt)
+    return _client.parse_intents(user_input, available_actions_prompt, history)
 
 def generate_response(prompt: str, history: list[dict] = None) -> str:
     # Concatenate the base SYSTEM_CHAT with the dynamic capabilities text

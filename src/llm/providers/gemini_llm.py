@@ -35,7 +35,8 @@ class GeminiLLMClient(LLMClient):
     def parse_intents(
         self,
         user_input: str,
-        available_actions_prompt: str = ""
+        available_actions_prompt: str = "",
+        history: Optional[List[Dict]] = None
     ) -> List[Dict]:
         """
         Ask the model to return ONLY a JSON array of intents.
@@ -45,6 +46,22 @@ class GeminiLLMClient(LLMClient):
         system_instruction = BASE_SYSTEM_PARSER
         if available_actions_prompt:
             system_instruction += available_actions_prompt
+            
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system_instruction}]    
+        
+        if history:
+            # history: [{"role": "user"|"assistant", "content": "..."}]
+            # Note: Intent parsing typically only needs the *user* turns for context,
+            # but including both can help the model see the result of the last action.
+            # We'll include both as the history list already contains the proper roles.
+            for turn in history:
+                role = turn.get("role", "user")
+                content = turn.get("content", "")
+                if content:
+                    messages.append({"role": role, "content": content})
+
+        # Current user message
+        messages.append({"role": "user", "content": user_input})
 
         try:
             completion = self.client.chat.completions.create(
@@ -52,10 +69,7 @@ class GeminiLLMClient(LLMClient):
                 temperature=Config.LLM_TEMPERATURE,
                 top_p=Config.LLM_TOP_P,
                 max_tokens=Config.LLM_MAX_TOKENS,
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": user_input},
-                ],
+                messages=messages,
             )
 
             raw = (completion.choices[0].message.content or "").strip()
