@@ -265,6 +265,7 @@ class AssistantGUI(QtWidgets.QMainWindow):
         # Apply theme to the scroll area and its content
         self.chat_scroll_area.setStyleSheet("background-color: #363636;")
         self.chat_display_content.setStyleSheet("background-color: #363636;")
+        self.text_input.setStyleSheet("background-color: #1e1e1e; color: white; font-size: 14px;")
 
     def apply_light_theme(self):
         QtWidgets.QApplication.setStyle("Fusion")
@@ -272,6 +273,7 @@ class AssistantGUI(QtWidgets.QMainWindow):
         # Apply theme to the scroll area and its content
         self.chat_scroll_area.setStyleSheet("background-color: white;")
         self.chat_display_content.setStyleSheet("background-color: white;")
+        self.text_input.setStyleSheet("background-color: white; color: black; font-size: 14px;")
 
     def apply_theme(self, theme):
         if theme == 'dark': self.apply_dark_theme()
@@ -361,7 +363,11 @@ class AssistantGUI(QtWidgets.QMainWindow):
         self.is_listening = False
         self.update_listen_button()
         self.text_input.setEnabled(True)
-        self.text_input.setStyleSheet("font-size: 14px;")
+        self.text_input.setStyleSheet(
+            "background-color: #1e1e1e; color: white; font-size: 14px;"
+            if self.current_theme == 'dark'
+            else "background-color: white; color: black; font-size: 14px;"
+        )
         self.listen_button.setEnabled(True)
         self.listen_button.setStyleSheet("")
         self.text_input.setFocus()
@@ -398,7 +404,11 @@ class AssistantGUI(QtWidgets.QMainWindow):
         self.text_input.clear()
         self.text_input.setFixedHeight(self.text_input.min_height) # Reset to minimum size
         self.text_input.setEnabled(True)
-        self.text_input.setStyleSheet("font-size: 14px;")
+        self.text_input.setStyleSheet(
+            "background-color: #1e1e1e; color: white; font-size: 14px;"
+            if self.current_theme == 'dark'
+            else "background-color: white; color: black; font-size: 14px;"
+        )
         self.listen_button.setEnabled(True)
         self.listen_button.setStyleSheet("")
         self.update_listen_button()
