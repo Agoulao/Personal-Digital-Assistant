@@ -5,8 +5,8 @@ import datetime # date/time operations
 import pytz # timezone handling
 from dateutil.relativedelta import relativedelta # date calculations
 
-from llm.llm_client import parse_intents, generate_response, update_system_chat_capabilities
-from modules.base_func import BaseAutomationModule
+from llm.llm_adapter import parse_intents, generate_response, update_system_chat_capabilities
+from modules.base_functions import BaseAutomationModule
 from config import Config 
 
 class Backend:

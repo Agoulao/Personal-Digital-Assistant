@@ -1,57 +1,139 @@
 import sys
 import threading
-from PyQt5 import QtWidgets, QtGui
-from PyQt5.QtCore import Qt, pyqtSignal, QObject, QTimer
+
+# Ensure QtCore is included in the imports
+from PyQt5 import QtWidgets, QtGui, QtCore 
+from PyQt5.QtCore import Qt, pyqtSignal, QObject, QTimer 
 
 from core.voice_recognition import SpeechRecognitionModule
 from core.tts import TTSModule
 from core.backend import Backend
 from config import Config 
+from markdown import markdown
+
+# Custom TextEdit for auto-resizing input
+class ResizableTextEdit(QtWidgets.QTextEdit):
+    # Signal to notify the parent when the size hint changes
+    text_height_changed = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        # Force 14px font for the input
+        self.setStyleSheet("font-size: 14px;")
+        
+        self.max_height = 200  # Set a maximum height in pixels before scrolling starts
+
+        # Single line height
+        self.min_height = (
+            self.fontMetrics().height()
+            + self.contentsMargins().top()
+            + self.contentsMargins().bottom()
+            + 20
+        )
+
+        self.setFixedHeight(self.min_height)
+        self.textChanged.connect(self.update_size)
+        
+        self._submit_callback = None
+
+    def set_submit_callback(self, callback):
+        self._submit_callback = callback
+        
+    def keyPressEvent(self, event):
+        # Handle both Return and Enter; prevent Shift+Enter double newline
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self._submit_callback:
+            if event.modifiers() == Qt.ShiftModifier:
+                # Shift+Enter for newline (default behavior)
+                super().keyPressEvent(event)
+                return
+            else:
+                # Enter for submission
+                self._submit_callback()
+                return
+        super().keyPressEvent(event)
+
+    def update_size(self):
+        # Height required by the document
+        document_height = self.document().size().height()
+        content_height = document_height + 10  # small padding
+        new_height = max(self.min_height, min(content_height, self.max_height))
+
+        if abs(self.height() - new_height) > 1:
+            self.setFixedHeight(int(new_height))
+            self.text_height_changed.emit()
+            
+    def sizeHint(self):
+        return QtCore.QSize(super().sizeHint().width(), self.height())
+    
+    # Context menu with adjusted font size
+    def contextMenuEvent(self, event):
+        menu = self.createStandardContextMenu()
+        font = menu.font()
+        font.setPointSize(10)
+        menu.setFont(font)
+        menu.exec_(event.globalPos())
 
 # Custom Widget for a chat bubble
 class ChatBubble(QtWidgets.QWidget):
+    """Custom widget for chat messages (bubbles)."""
     def __init__(self, text, is_user, parent=None):
         super().__init__(parent)
         self.is_user = is_user
-        self.text_label = QtWidgets.QLabel(text)
+
+        # Helper to break very long words so bubbles don't grow horizontally forever
+        def break_long_words(s: str, limit: int = 40) -> str:
+            parts = []
+            for word in s.split(' '):
+                if len(word) <= limit:
+                    parts.append(word)
+                else:
+                    chunks = [word[i:i+limit] for i in range(0, len(word), limit)]
+                    parts.append('\n'.join(chunks))
+            return ' '.join(parts)
+
+        self.text_label = QtWidgets.QLabel()
         self.text_label.setWordWrap(True)
-        self.text_label.setTextInteractionFlags(Qt.TextSelectableByMouse) # Allow text selection
+        self.text_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.text_label.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                      QtWidgets.QSizePolicy.Preferred)
+        self.text_label.setMaximumWidth(600)  # max bubble width before wrapping
 
-        # Set specific styles for the bubble
+        # Text & format 
         if self.is_user:
-            self.text_label.setStyleSheet(
-                "background-color: #007bff;"  # Blue for user
-                "color: white;"
-                "border-radius: 10px;"
-                "padding: 5px 14px;" 
-                "margin-left: 30%;" 
-                "font-size: 14px;" 
-            )
-            self.text_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter) # Align text to the left
+            # Preserve \n exactly, safe to break long words
+            clean_text = break_long_words(text)
+            self.text_label.setTextFormat(Qt.PlainText)
+            self.text_label.setText(clean_text)
         else:
-            self.text_label.setStyleSheet(
-                "background-color: #4a4a4a;"  # Dark grey for assistant
-                "color: white;"
-                "border-radius: 10px;"
-                "padding: 5px 14px;" 
-                "margin-right: 30%;" # Push assistant bubble to the left
-                "font-size: 14px;" 
-            )
-            self.text_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter) # Align text to the left
+            # Assistant: comes as markdown HTML, don't touch tags
+            self.text_label.setTextFormat(Qt.RichText)
+            self.text_label.setText(text)
 
+        # Styling 
+        self.text_label.setStyleSheet(
+            "background-color: #4a4a4a;"
+            "color: white;"
+            "border-radius: 10px;"
+            "padding: 8px 14px;"
+            "font-size: 14px;"
+        )
+
+        # Layout 
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5) # Added margins for spacing from edges
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(0)
 
         if self.is_user:
-            # Spacer on the left to push the bubble right
-            layout.addStretch()
-            layout.addWidget(self.text_label)
+            layout.addStretch(1)
+            layout.addWidget(self.text_label, 0)
         else:
-            layout.addWidget(self.text_label)
-            # Spacer on the right to push the bubble left
-            layout.addStretch()
+            layout.addWidget(self.text_label, 0)
+            layout.addStretch(1)
 
-        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
+                           QtWidgets.QSizePolicy.Preferred)
+
 
 
 class SignalBridge(QObject):
@@ -61,6 +143,7 @@ class SignalBridge(QObject):
     reenable_input = pyqtSignal()
     clear_chat = pyqtSignal()
 
+# AssistantGUI
 class AssistantGUI(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -93,29 +176,29 @@ class AssistantGUI(QtWidgets.QMainWindow):
         self.populate_input_devices()
 
     def build_ui(self):
-        self.resize(Config.WINDOW_WIDTH, Config.WINDOW_HEIGHT) # Use Config for window size
+        self.resize(Config.WINDOW_WIDTH, Config.WINDOW_HEIGHT)
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
         layout = QtWidgets.QVBoxLayout(central)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        # Chat Display (now a QScrollArea containing a QVBoxLayout)
+        # Chat Display
         self.chat_scroll_area = QtWidgets.QScrollArea()
         self.chat_scroll_area.setWidgetResizable(True)
-        self.chat_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff) # Hide horizontal scrollbar
+        self.chat_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.chat_display_content = QtWidgets.QWidget()
         self.chat_display_layout = QtWidgets.QVBoxLayout(self.chat_display_content)
-        self.chat_display_layout.setAlignment(Qt.AlignTop) # Align messages to the top
+        self.chat_display_layout.setAlignment(Qt.AlignTop)
         self.chat_display_layout.setContentsMargins(0, 0, 0, 0)
-        self.chat_display_layout.setSpacing(5) # Spacing between bubbles
+        self.chat_display_layout.setSpacing(5)
         self.chat_scroll_area.setWidget(self.chat_display_content)
         layout.addWidget(self.chat_scroll_area, stretch=1)
 
         # Input
-        self.text_input = QtWidgets.QLineEdit()
-        self.text_input.setPlaceholderText("Type a message and press Enter to submit…")
-        self.text_input.returnPressed.connect(self.submit_text)
+        self.text_input = ResizableTextEdit()
+        self.text_input.setPlaceholderText("Type a message and press Enter to submit… (Shift+Enter for newline)")
+        self.text_input.set_submit_callback(self.submit_text)
         layout.addWidget(self.text_input)
 
         # Device & volume
@@ -134,7 +217,7 @@ class AssistantGUI(QtWidgets.QMainWindow):
         vol_layout.addWidget(self.volume_label)
         self.volume_slider = QtWidgets.QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(int(Config.VOICE_VOLUME * 100)) # Use Config for initial volume
+        self.volume_slider.setValue(int(Config.VOICE_VOLUME * 100))
         self.volume_slider.valueChanged.connect(self.on_volume_change)
         vol_layout.addWidget(self.volume_slider)
         settings_layout.addLayout(vol_layout, stretch=1)
@@ -204,15 +287,35 @@ class AssistantGUI(QtWidgets.QMainWindow):
 
     def populate_input_devices(self):
         import speech_recognition as sr
+
         try:
             names = sr.Microphone.list_microphone_names()
-            mics = [n for n in names if "mic" in n.lower()]
-        except:
-            mics = []
-        if not mics and 'names' in locals():
-            mics = names
+        except Exception:
+            names = []
+
+        # Remove duplicates while preserving order
+        unique = []
+        for n in names:
+            if n not in unique:
+                unique.append(n)
+
+        # Prefer devices that look like actual microphones / inputs
+        filtered = [
+            n for n in unique
+            if any(keyword in n.lower() for keyword in ("mic", "microphone", "input"))
+        ]
+
+        # Fallback: if filter removed everything, use the unique list
+        if not filtered:
+            filtered = unique
+
+        # Limit how many extra devices are shown (besides "Default Microphone")
+        MAX_EXTRA_DEVICES = 5
+        device_list = ["Default Microphone"]
+        device_list.extend(filtered[:MAX_EXTRA_DEVICES])
+
         self.input_device.clear()
-        self.input_device.addItems(mics or ["Default Microphone"])
+        self.input_device.addItems(device_list)
 
     def on_volume_change(self, value): self.tts.set_volume(value / 100.0)
     def on_auto_speak_toggle(self, state): self.auto_speak = (state == Qt.Checked)
@@ -226,11 +329,12 @@ class AssistantGUI(QtWidgets.QMainWindow):
         else: self.stop_listening()
 
     def submit_text(self):
-        text = self.text_input.text().strip()
+        # Use toPlainText() instead of text()
+        text = self.text_input.toPlainText().strip()
         if not text: return
         self.signals.update_text.emit(text, True) # True for user message
         self.text_input.setEnabled(False)
-        self.text_input.setStyleSheet("background-color: #2e2e2e; color: #777;")
+        self.text_input.setStyleSheet("background-color: #2e2e2e; color: #777; font-size: 14px;")
         self.listen_button.setEnabled(False)
         self.listen_button.setStyleSheet("background-color: #555; color: #aaa;")
         self.dot_count = 0
@@ -249,7 +353,7 @@ class AssistantGUI(QtWidgets.QMainWindow):
         self.is_listening = True
         self.update_listen_button()
         self.text_input.setEnabled(False)
-        self.text_input.setStyleSheet("background-color: #2e2e2e; color: #777;")
+        self.text_input.setStyleSheet("background-color: #2e2e2e; color: #777; font-size: 14px;")
         self.listen_thread = threading.Thread(target=self.listen_loop, daemon=True)
         self.listen_thread.start()
 
@@ -257,7 +361,7 @@ class AssistantGUI(QtWidgets.QMainWindow):
         self.is_listening = False
         self.update_listen_button()
         self.text_input.setEnabled(True)
-        self.text_input.setStyleSheet("")
+        self.text_input.setStyleSheet("font-size: 14px;")
         self.listen_button.setEnabled(True)
         self.listen_button.setStyleSheet("")
         self.text_input.setFocus()
@@ -284,16 +388,17 @@ class AssistantGUI(QtWidgets.QMainWindow):
         if self.chat_display_layout.count() > 0:
             last_bubble_widget = self.chat_display_layout.itemAt(self.chat_display_layout.count() - 1).widget()
             if isinstance(last_bubble_widget, ChatBubble) and not last_bubble_widget.is_user:
-                current_text = last_bubble_widget.text_label.text()
                 self.dot_count = (self.dot_count + 1) % 3
                 new_dots = '.' * (self.dot_count + 1)
                 last_bubble_widget.text_label.setText(new_dots)
                 self.scroll_to_bottom()
 
     def reenable_ui(self):
+        # Clear and reset size for ResizableTextEdit
         self.text_input.clear()
+        self.text_input.setFixedHeight(self.text_input.min_height) # Reset to minimum size
         self.text_input.setEnabled(True)
-        self.text_input.setStyleSheet("")
+        self.text_input.setStyleSheet("font-size: 14px;")
         self.listen_button.setEnabled(True)
         self.listen_button.setStyleSheet("")
         self.update_listen_button()
@@ -307,8 +412,17 @@ class AssistantGUI(QtWidgets.QMainWindow):
     def replace_last_assistant(self, text):
         if self.chat_display_layout.count() > 0:
             last_bubble_widget = self.chat_display_layout.itemAt(self.chat_display_layout.count() - 1).widget()
+            
             if isinstance(last_bubble_widget, ChatBubble) and not last_bubble_widget.is_user:
-                last_bubble_widget.text_label.setText(text)
+                html_text = markdown(text)
+                
+                # Remove surrounding <p> tags for clean display
+                if html_text.startswith('<p>') and html_text.endswith('</p>\n'):
+                    html_text = html_text[3:-5]
+
+                # Set the text as rich text/HTML to handle markdown formatting
+                last_bubble_widget.text_label.setText(html_text)
+                
                 self.scroll_to_bottom()
         else:
             # Fallback: if no messages, just append

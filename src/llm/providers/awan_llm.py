@@ -1,7 +1,7 @@
 import json
 import requests
 import re
-from llm.llm_client import LLMClient, SYSTEM_CHAT, BASE_SYSTEM_PARSER
+from llm.llm_adapter import LLMClient, SYSTEM_CHAT, BASE_SYSTEM_PARSER
 from config import Config 
 from typing import List, Dict, Optional
 

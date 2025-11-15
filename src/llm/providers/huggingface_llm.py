@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 
 from openai import OpenAI
 
-from llm.llm_client import LLMClient, BASE_SYSTEM_PARSER, SYSTEM_CHAT
+from llm.llm_adapter import LLMClient, BASE_SYSTEM_PARSER, SYSTEM_CHAT
 from config import Config
 
 

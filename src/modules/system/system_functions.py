@@ -7,7 +7,7 @@ from pathlib import Path
 from shutil import copy2
 import shutil 
 import webbrowser
-from modules.base_func import BaseAutomationModule # Ensure this is imported
+from modules.base_functions import BaseAutomationModule # Ensure this is imported
 
 # Decorator for safe execution and uniform error handling
 def safe_action(func):

@@ -23,7 +23,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from modules.base_func import BaseAutomationModule
+from modules.base_functions import BaseAutomationModule
 
 # Decorator for safe execution and uniform error handling
 def safe_action(func):

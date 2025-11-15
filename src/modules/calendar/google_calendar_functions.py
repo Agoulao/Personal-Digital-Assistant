@@ -27,7 +27,7 @@ from dateutil import parser
 from dateutil.relativedelta import relativedelta
 import pytz
 
-from modules.base_func import BaseAutomationModule # Import the base class
+from modules.base_functions import BaseAutomationModule # Import the base class
 from typing import Dict, Any
 
 # If modifying these scopes, delete the file token.json.

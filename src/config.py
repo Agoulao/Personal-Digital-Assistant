@@ -21,9 +21,9 @@ class Config:
     # List the filenames (without .py extension) of the automation modules you want to enable.
     # These files should be located in the 'modules/' directory.
     ENABLED_MODULES = (
-        "modules.system.system_func",
-        "modules.emails.gmail_func",
-        "modules.calendar.google_calendar_func",
+        "modules.system.system_functions",
+        "modules.emails.gmail_functions",
+        "modules.calendar.google_calendar_functions",
     )
 
     # LLM settings
