@@ -1,7 +1,8 @@
 # Personal Digital Assistant
 
-Code developed for my Master's Thesis entitled:
-**Assistente digital baseado em Inteligência Artificial para PC (Artificial Intelligence-based digital assistant for PC)**
+Code developed for my Master's Thesis entitled: 
+
+### Assistente digital baseado em Inteligência Artificial para PC (Artificial Intelligence-based digital assistant for PC)
 
 Master's in Computer Science and Computer Engineering at [Lisbon School of Engineering (ISEL)](https://www.isel.pt/en), 2025
 
