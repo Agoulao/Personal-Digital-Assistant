@@ -4,7 +4,7 @@ Code developed for my Master's Thesis entitled:
 
 ### *Assistente digital baseado em Inteligência Artificial para PC* (*Artificial Intelligence-based digital assistant for PC*)
 
-Master's in Computer Science and Computer Engineering at [Lisbon School of Engineering (ISEL)](https://www.isel.pt/en), 2025
+Master's in Computer Science and Computer Engineering at [Lisbon School of Engineering (ISEL)](https://www.isel.pt/en), Polytechnic University of Lisbon, 2025
 
 This project presents a modular Windows desktop application designed to act as a personal digital assistant. \
 It supports both voice commands and text input, allowing users to interact with their computer and various online services through natural language. \
@@ -16,12 +16,12 @@ Associated scientific publications include:
 * António Goulão, Dinis Dias, Artur Ferreira, and Nuno Leite, \
 *“A Personal Digital Assistant Enhanced with Artificial Intelligence Techniques”*,  
 Simpósio em Informática (INForum), September 2025, Évora, Portugal. \
-[Avaliable on ResearchGate](https://www.researchgate.net/publication/395268319_A_Personal_Digital_Assistant_Enhanced_with_Artificial_Intelligence_Techniques)
+[Available on ResearchGate](https://www.researchgate.net/publication/395268319_A_Personal_Digital_Assistant_Enhanced_with_Artificial_Intelligence_Techniques)
 
 * António Goulão, Dinis Dias, Artur Ferreira, and Nuno Leite, \
 “A Modular Digital Assistant for Windows with Large Language Models”, \
 Portuguese Conference on Pattern Recognition (RECPAD), October 2025, Aveiro, Portugal. \
-[Avaliable on ResearchGate](https://www.researchgate.net/publication/397138243_A_Modular_Digital_Assistant_for_Windows_with_Large_Language_Models)
+[Available on ResearchGate](https://www.researchgate.net/publication/397138243_A_Modular_Digital_Assistant_for_Windows_with_Large_Language_Models)
 
 ## Features
 
